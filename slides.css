@@ -1,0 +1,34 @@
+
+body { margin-left: auto; margin-right: auto; max-width: 100em; }
+/* body { margin-left: auto; margin-right: auto; max-width: 60em; }*/
+/* body { text-align: center; } */
+
+h2 { border: 0px solid gray; border-width: 0.2em 0px; padding: 0.4em; }
+div.talk {
+  text-align: left;
+  position: relative;
+  display: inline-block; vertical-align: top;
+  width: 49rem;
+  /* --shf: 4.9406564584124654e-324; */
+  /* --ncolumn: calc((100% / 30rem) * var(--shf) / var(--shf)); */
+  /* width: calc(99% / var(--ncolumn) - 0.5rem); */
+  max-height: 30rem; overflow-y: auto;
+  border: 1px solid silver; margin: 0.2rem;
+}
+h3 {
+  position: sticky; top: 0px; z-index: 0; background-color: white;
+  text-align: center; margin: 0; padding: 1rem;
+}
+span.desc {
+  display: block; margin: 1rem;
+}
+
+body.hide-desc span.desc { display: none; }
+
+
+span.author { font-weight: normal; font-style: oblique; color: navy; }
+span.title { font-weight: bold; }
+a.attach { font-weight: normal; color: teal; }
+
+h3.talk>a.type-pdf { display: inline-block; width: 16px; height: 16px; overflow: hidden; white-space: nowrap; }
+h3.talk>a.type-pdf:before { display: inline; content: url(https://akinomyoga.github.io/agh/icons/file-pdf.png); vertical-align: top; }

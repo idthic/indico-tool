@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+
+function mkd { [[ -d $1 ]] || mkdir -p "$1"; }
+function string#match { [[ $1 =~ $2 ]]; }
+function install/cp { [[ $1 -ot $2 ]] || cp "$1" "$2"; }
+
+function chkcmds {
+  type -t "$@" &>/dev/null && return 0
+
+  echo "indico: this operation requires the commands: $*." >&2
+  local cmd
+  for cmd; do
+    type -t "$cmd" &>/dev/null || echo "indico: please install $cmd." >&2
+  done
+  return 1
+}
+
+_dl_useragent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36'
+_dl_cooldown=0
+_dl_cooldown_default=3
+_dl_cooldown_fail=2
+function dl() {
+  local url=$1 dst=$2
+  [[ -f $dst ]] && return 3
+  local agent=$_dl_useragent
+
+  local cooldown=$((_dl_cooldown))
+  if ((cooldown)); then
+    sleep "$cooldown"
+    _dl_cooldown=0
+  fi
+
+  if
+    wget -nv --show-progress --user-agent="$agent" "$url" -O "$dst.part" &&
+      [[ -s $dst.part ]] &&
+      mv "$dst.part" "$dst"
+  then
+    _dl_cooldown=$_dl_cooldown_default
+  else
+    rm -f "$dst.part"
+    _dl_cooldown=$_dl_cooldown_fail
+  fi
+}
+
+function sub:download/down { dl "$1" "$outdir/$2"; }
+function sub:download {
+  # input check
+  if ! string#match "$1" '^(https?://[^/]+)/event/([0-9]+)'; then
+    echo "indico: failed to analyze the indicto event URL." >&2
+    return 2
+  fi
+  local baseurl=${BASH_REMATCH[1]}
+  local event=${BASH_REMATCH[2]}
+  if [[ ! $2 ]]; then
+    echo "indico: output directory is not specified." >&2
+    return 2
+  fi
+  local outdir=$2
+
+  # env check
+  chkcmds wget jq npm node || return $?
+
+  if ! mkd "$outdir"; then
+    echo "indico: failed to create the output directory '$outdir'." >&2
+    return 1
+  fi
+
+  local url_timetable=$baseurl/event/$event/timetable
+  dl "$url_timetable" "$outdir"/timetable0.tmp
+  if (($?!=0&&$?!=3)); then
+    echo "indico: failed to download '$url_timetable'" >&2
+    return 1
+  fi
+
+  < "$outdir"/timetable0.tmp sed -n '/^[[:space:]]*var timetableArgs =/{n;n;s/,[[:space:]]*$//;p;q;}' | jq '
+    [
+      [keys_unsorted,[.[]]] | transpose | .[] | {
+        date:.[0],
+        session:.[1][]
+      } | select(.session.entries != null) | {
+        date: .date,
+        session: .session.title,
+        talk: .session.entries[] | select(has("presenters")) | {
+          author: .presenters[0].name,
+          title: .title,
+          attach: [if .attachments.files != null then [.attachments.files[].download_url] else [] end][0],
+          desc: .description,
+        }
+      } | {
+        date: .date,
+        session: (.date + " " + .session),
+        author: .talk.author,
+        title: .talk.title,
+        attach: .talk.attach,
+        desc: .talk.desc,
+      }
+    ]
+  ' > "$outdir"/timetable1.tmp
+  
+  local -x indico_input=$outdir/timetable1.tmp
+  local -x indico_baseurl=$baseurl
+  npm install agh.sprintf
+  node indico-timetable2html.js > "$outdir"/index.html
+  install/cp slides.css "$outdir"/slides.css
+  install/cp slides.js  "$outdir"/slides.js
+
+  sed -n 's|^[[:space:]]*<!-- DOWNLOAD \(.*\) -->.*|sub:download/down \1|p' "$outdir"/index.html > "$outdir"/timetable3.tmp &&
+    source "$outdir"/timetable3.tmp
+}
+
+if ((!$#)); then
+  echo "usage: ./indico download <indico-event-url> <output-directory>" >&2
+  return 2
+elif ! declare -f "sub:$1" &>/dev/null; then
+  echo "indico: unrecognized subcommand '$1'" >&2
+  return 2
+else
+  "sub:$@"
+fi
